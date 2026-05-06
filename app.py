@@ -15,6 +15,7 @@ RUNTIME_ERROR_MESSAGE = "Nao consegui completar a resposta agora. Tente novament
 TIMEOUT_ERROR_MESSAGE = "A resposta demorou demais e foi interrompida. Tente novamente."
 CONFIG_ERROR_MESSAGE = "A configuracao do agente esta invalida. Revise o .env e tente novamente."
 DEFAULT_USER_NAME = "user_123456"
+USER_NAME_INPUT_KEY = "user_name_input"
 
 
 class ChatMessage(TypedDict):
@@ -79,6 +80,7 @@ def _init_state() -> None:
     st.session_state.setdefault("messages", [])
     st.session_state.setdefault("use_tavily", False)
     st.session_state.setdefault("user_name", DEFAULT_USER_NAME)
+    st.session_state.setdefault(USER_NAME_INPUT_KEY, _current_user_name())
     st.session_state.setdefault("memory_subject_id", _memory_subject_id_from_user_name(_current_user_name()))
     _ensure_conversation()
 
@@ -160,9 +162,12 @@ def _render_sidebar() -> None:
         st.caption("Memoria remota por usuario e resposta em streaming.")
         st.divider()
         st.markdown("**Usuario**")
-        user_name = st.text_input("Nome do usuario", value=_current_user_name())
-        st.caption(f"ID: `{_memory_subject_id_from_user_name(user_name)}`")
-        if st.button("Usar usuario", type="primary", icon=":material/person:"):
+        user_name = st.text_input("Nome do usuario", key=USER_NAME_INPUT_KEY)
+        selected_memory_subject_id = _memory_subject_id_from_user_name(user_name)
+        active_memory_subject_id = st.session_state.get("memory_subject_id")
+        st.caption(f"ID: `{selected_memory_subject_id}`")
+        should_apply_user = selected_memory_subject_id != active_memory_subject_id
+        if st.button("Usar usuario", type="primary", icon=":material/person:") or should_apply_user:
             _set_user(user_name)
             st.rerun()
         st.divider()

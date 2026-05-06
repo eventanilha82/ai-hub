@@ -27,6 +27,7 @@ class AppUnitTests(TestCase):
             conversation_id="conv-test",
             memory_subject_id="user_123456",
             user_name="user_123456",
+            user_name_input="user_123456",
             notice_message=None,
         )
         app.st.session_state = self.session_state
@@ -53,6 +54,7 @@ class AppUnitTests(TestCase):
     def test_init_state_creates_single_remote_conversation_when_missing(self) -> None:
         self.session_state.pop("conversation_id")
         self.session_state.pop("memory_subject_id")
+        self.session_state.pop("user_name_input")
         self.session_state.user_name = "Maria Silva"
 
         with patch.object(app, "create_agent_conversation", return_value="conv-123") as create_conversation:
@@ -61,6 +63,7 @@ class AppUnitTests(TestCase):
         create_conversation.assert_called_once_with("Maria_Silva")
         self.assertEqual(self.session_state.memory_subject_id, "Maria_Silva")
         self.assertEqual(self.session_state.conversation_id, "conv-123")
+        self.assertEqual(self.session_state.user_name_input, "Maria Silva")
         self.assertEqual(self.session_state.messages, [])
 
     def test_init_state_reuses_existing_conversation(self) -> None:
@@ -223,6 +226,21 @@ class AppUnitTests(TestCase):
         self.assertEqual(self.session_state.user_name, "Maria Silva")
         self.assertEqual(self.session_state.memory_subject_id, "Maria_Silva")
         self.assertEqual(self.session_state.conversation_id, "conv-maria")
+        app.st.rerun.assert_called_once()
+
+    def test_render_sidebar_auto_applies_changed_user_name(self) -> None:
+        app.st.text_input.return_value = "Maria Silva"
+        app.st.button.side_effect = [False, False]
+        app.st.toggle.return_value = False
+
+        with patch.object(app, "create_agent_conversation", return_value="conv-maria") as create_conversation:
+            app._render_sidebar()
+
+        create_conversation.assert_called_once_with("Maria_Silva")
+        self.assertEqual(self.session_state.user_name, "Maria Silva")
+        self.assertEqual(self.session_state.memory_subject_id, "Maria_Silva")
+        self.assertEqual(self.session_state.conversation_id, "conv-maria")
+        self.assertEqual(self.session_state.messages, [])
         app.st.rerun.assert_called_once()
 
     def test_render_sidebar_updates_tavily_toggle(self) -> None:

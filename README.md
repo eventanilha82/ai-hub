@@ -4,7 +4,7 @@ Aplicacao de chat em `Streamlit` integrada ao `OpenAI Agents SDK`, usando um end
 
 ## O que o codigo faz
 
-- `app.py` cria a interface estilo chat, permite informar o nome do usuario no sidebar, habilitar Tavily MCP quando necessario, mantem o historico visual no estado do Streamlit e exibe erros no fluxo da conversa.
+- `app.py` cria a interface estilo chat, permite trocar o usuario no sidebar, habilitar Tavily MCP quando necessario, mantem o historico visual no estado do Streamlit e exibe erros no fluxo da conversa.
 - `agent.py` monta o cliente OpenAI compativel com OCI usando `OCI_PROJECT`, configura um agente simples, cria uma `conversation` remota por usuario ativo e entrega respostas curtas em streaming para a UI com `conversation_id`.
 - Quando habilitado no sidebar, `agent.py` conecta ao servidor MCP do Tavily via `TAVILY_MCP_URL` e passa `mcp_servers=[server]` diretamente ao agente.
 - Se `TAVILY_SEARCH_URL` estiver preenchida, o agente prioriza essa fonte nas pesquisas do Tavily.
@@ -67,7 +67,7 @@ uv run streamlit run app.py
 
 ## Fluxo da aplicacao
 
-1. O usuario informa o nome no sidebar e clica em `Usar usuario`.
+1. O usuario informa ou altera o nome no sidebar; ao mudar o nome, a UI cria uma nova conversa para esse usuario.
 2. A UI transforma esse nome em `memory_subject_id` e cria uma `conversation` remota no runtime principal.
 3. Opcionalmente, o usuario habilita `Tavily MCP` no sidebar para permitir pesquisa externa.
 4. O `Streamlit` recebe a mensagem do usuario.
@@ -83,7 +83,7 @@ uv run streamlit run app.py
 - Cada resposta usa `Runner.run_streamed(..., conversation_id=...)`.
 - O historico visual fica apenas no `st.session_state`; nao ha `SQLiteSession`, banco local ou pasta `data`.
 - Limpar a conversa cria outra `conversation` para o usuario atual.
-- Trocar o usuario cria outra `conversation` e limpa o historico visual.
+- Trocar o usuario pelo sidebar cria outra `conversation` e limpa o historico visual.
 
 ## Variaveis de ambiente
 
