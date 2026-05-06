@@ -94,6 +94,7 @@ def _stream_response(
     conversation_id: str,
     turn_id: str,
     placeholder: st.delta_generator.DeltaGenerator,
+    loading_placeholder: st.delta_generator.DeltaGenerator,
     chunks: list[str],
     use_tavily: bool,
 ) -> str:
@@ -102,11 +103,17 @@ def _stream_response(
         conversation_id,
         len(prompt),
     )
+    waiting_first_chunk = True
     for chunk in stream_agent_reply(prompt, conversation_id, use_tavily=use_tavily, turn_id=turn_id):
         if not chunk:
             continue
+        if waiting_first_chunk:
+            loading_placeholder.empty()
+            waiting_first_chunk = False
         chunks.append(chunk)
         placeholder.markdown("".join(chunks))
+    if waiting_first_chunk:
+        loading_placeholder.empty()
     response = "".join(chunks)
     logger.info(
         "UI: renderizacao incremental concluida conversation_id=%s chunks=%s chars=%s",
@@ -207,17 +214,20 @@ def _handle_prompt(prompt: str) -> None:
 
     response_chunks: list[str] = []
     with st.chat_message("assistant", avatar=_avatar_for("assistant")):
+        loading_placeholder = st.empty()
         placeholder = st.empty()
         try:
-            with st.spinner("Preparando resposta..."):
-                response_text = _stream_response(
-                    prompt,
-                    conversation_id,
-                    turn_id,
-                    placeholder,
-                    response_chunks,
-                    use_tavily,
-                )
+            with loading_placeholder:
+                with st.spinner("Preparando resposta..."):
+                    response_text = _stream_response(
+                        prompt,
+                        conversation_id,
+                        turn_id,
+                        placeholder,
+                        loading_placeholder,
+                        response_chunks,
+                        use_tavily,
+                    )
         except AgentConfigError as error:
             logger.exception(
                 "UI: falha de configuracao/runtime conversation_id=%s tipo=%s parcial_len=%s detalhe=%s",
