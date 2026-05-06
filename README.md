@@ -38,8 +38,16 @@ OCI_BASE_URL=https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/ope
 OCI_MODEL_ID=xai.grok-4-fast-reasoning
 OCI_PROJECT=ocid1.generativeaiproject...
 TAVILY_MCP_URL=https://mcp.tavily.com/mcp/?tavilyApiKey=...
-TAVILY_SEARCH_URL=https://www.petz.com.br/blog/
+TAVILY_SEARCH_URL=https://site-ou-blog-para-priorizar.example/
 ```
+
+Para obter o `TAVILY_MCP_URL`, acesse [Tavily](https://www.tavily.com/), crie ou entre na sua conta e gere uma API key no dashboard. A documentacao oficial do [Tavily MCP Server](https://docs.tavily.com/documentation/mcp) usa este formato para o servidor MCP remoto:
+
+```env
+TAVILY_MCP_URL=https://mcp.tavily.com/mcp/?tavilyApiKey=<sua-api-key>
+```
+
+Substitua `<sua-api-key>` pela chave Tavily, normalmente com prefixo `tvly-`. O `TAVILY_SEARCH_URL` e opcional; use-o apenas quando quiser priorizar uma fonte especifica nas buscas.
 
 ## Como rodar
 
