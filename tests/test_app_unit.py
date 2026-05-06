@@ -33,9 +33,9 @@ class AppUnitTests(TestCase):
         app.st.session_state = self.session_state
         app.st.sidebar = nullcontext()
         app.st.chat_message = Mock(return_value=nullcontext())
-        self.loading_placeholder = SimpleNamespace(caption=Mock(), empty=Mock())
         self.response_placeholder = SimpleNamespace(markdown=Mock(), empty=Mock())
-        app.st.empty = Mock(side_effect=[self.loading_placeholder, self.response_placeholder])
+        app.st.empty = Mock(return_value=self.response_placeholder)
+        app.st.spinner = Mock(return_value=nullcontext())
         app.st.button = Mock(return_value=False)
         app.st.text_input = Mock(return_value="user_123456")
         app.st.toggle = Mock(return_value=False)
@@ -91,9 +91,8 @@ class AppUnitTests(TestCase):
 
         create_conversation.assert_not_called()
 
-    def test_stream_response_clears_loading_on_first_chunk(self) -> None:
+    def test_stream_response_renders_incremental_chunks(self) -> None:
         placeholder = SimpleNamespace(markdown=Mock())
-        loading_placeholder = SimpleNamespace(empty=Mock())
 
         with patch.object(app, "stream_agent_reply", return_value=iter(["Ola", " mundo"])) as stream_reply:
             response = app._stream_response(
@@ -101,19 +100,16 @@ class AppUnitTests(TestCase):
                 "conv-test",
                 "turn-1",
                 placeholder,
-                loading_placeholder,
                 [],
                 False,
             )
 
         self.assertEqual(response, "Ola mundo")
-        loading_placeholder.empty.assert_called_once()
         placeholder.markdown.assert_called()
         stream_reply.assert_called_once_with("oi", "conv-test", use_tavily=False, turn_id="turn-1")
 
     def test_stream_response_passes_tavily_toggle(self) -> None:
         placeholder = SimpleNamespace(markdown=Mock())
-        loading_placeholder = SimpleNamespace(empty=Mock())
 
         with patch.object(app, "stream_agent_reply", return_value=iter(["Ola"])) as stream_reply:
             app._stream_response(
@@ -121,7 +117,6 @@ class AppUnitTests(TestCase):
                 "conv-test",
                 "turn-1",
                 placeholder,
-                loading_placeholder,
                 [],
                 True,
             )
@@ -132,6 +127,7 @@ class AppUnitTests(TestCase):
         with patch.object(app, "_stream_response", return_value="Resposta final"):
             app._handle_prompt("oi")
 
+        app.st.spinner.assert_called_once_with("Preparando resposta...")
         self.assertEqual(
             self.session_state.messages,
             [
@@ -142,7 +138,7 @@ class AppUnitTests(TestCase):
         app.st.rerun.assert_called_once()
 
     def test_handle_prompt_appends_user_after_runtime_error(self) -> None:
-        def broken_stream(prompt, conversation_id, turn_id, placeholder, loading_placeholder, chunks, use_tavily):
+        def broken_stream(prompt, conversation_id, turn_id, placeholder, chunks, use_tavily):
             chunks.extend(["resposta", " parcial"])
             raise RuntimeError("falhou no meio")
 
@@ -157,7 +153,7 @@ class AppUnitTests(TestCase):
         app.st.rerun.assert_called_once()
 
     def test_handle_prompt_appends_user_after_config_error(self) -> None:
-        def broken_stream(prompt, conversation_id, turn_id, placeholder, loading_placeholder, chunks, use_tavily):
+        def broken_stream(prompt, conversation_id, turn_id, placeholder, chunks, use_tavily):
             raise app.AgentConfigError("faltou env")
 
         with patch.object(app, "_stream_response", side_effect=broken_stream):
@@ -171,7 +167,7 @@ class AppUnitTests(TestCase):
         app.st.rerun.assert_called_once()
 
     def test_handle_prompt_appends_user_after_timeout(self) -> None:
-        def stalled_stream(prompt, conversation_id, turn_id, placeholder, loading_placeholder, chunks, use_tavily):
+        def stalled_stream(prompt, conversation_id, turn_id, placeholder, chunks, use_tavily):
             chunks.extend(["resposta"])
             raise APITimeoutError(request=Request("POST", "https://example.test"))
 
