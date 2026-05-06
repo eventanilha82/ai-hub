@@ -118,6 +118,95 @@ def _input_summary(value: str) -> str:
     return f"{len(value)}:{preview!r}"
 
 
+def _argument_keys(arguments: dict[str, Any] | None) -> str:
+    if not arguments:
+        return "-"
+    return ",".join(sorted(str(key) for key in arguments.keys()))
+
+
+class TimedTavilyMCPServer(MCPServerStreamableHttp):
+    def __init__(self, *args: Any, conversation_id: str, turn: str, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._conversation_id = conversation_id
+        self._turn = turn
+
+    async def list_tools(self, run_context: Any | None = None, agent: Any | None = None) -> list[Any]:
+        started_at = asyncio.get_running_loop().time()
+        _log(
+            logging.INFO,
+            "mcp",
+            "tavily.list_tools_start",
+            cid=_conversation_label(self._conversation_id),
+            turn=self._turn,
+        )
+        try:
+            tools = await super().list_tools(run_context=run_context, agent=agent)
+        except Exception as error:
+            _log(
+                logging.WARNING,
+                "mcp",
+                "tavily.list_tools_error",
+                cid=_conversation_label(self._conversation_id),
+                turn=self._turn,
+                t=asyncio.get_running_loop().time() - started_at,
+                typ=type(error).__name__,
+                err=error,
+            )
+            raise
+        _log(
+            logging.INFO,
+            "mcp",
+            "tavily.list_tools_done",
+            cid=_conversation_label(self._conversation_id),
+            turn=self._turn,
+            t=asyncio.get_running_loop().time() - started_at,
+            tools=len(tools),
+        )
+        return tools
+
+    async def call_tool(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any] | None,
+        meta: dict[str, Any] | None = None,
+    ) -> Any:
+        started_at = asyncio.get_running_loop().time()
+        _log(
+            logging.INFO,
+            "mcp",
+            "tavily.call_start",
+            cid=_conversation_label(self._conversation_id),
+            turn=self._turn,
+            tool=tool_name,
+            args=_argument_keys(arguments),
+        )
+        try:
+            result = await super().call_tool(tool_name, arguments, meta=meta)
+        except Exception as error:
+            _log(
+                logging.WARNING,
+                "mcp",
+                "tavily.call_error",
+                cid=_conversation_label(self._conversation_id),
+                turn=self._turn,
+                tool=tool_name,
+                t=asyncio.get_running_loop().time() - started_at,
+                typ=type(error).__name__,
+                err=error,
+            )
+            raise
+        _log(
+            logging.INFO,
+            "mcp",
+            "tavily.call_done",
+            cid=_conversation_label(self._conversation_id),
+            turn=self._turn,
+            tool=tool_name,
+            t=asyncio.get_running_loop().time() - started_at,
+        )
+        return result
+
+
 def _event_delta(event: Any) -> str:
     if isinstance(event, ResponseTextDeltaEvent):
         return event.delta or ""
@@ -206,8 +295,8 @@ def _tavily_search_url() -> str:
     return os.getenv("TAVILY_SEARCH_URL", "").strip()
 
 
-def _build_tavily_mcp_server(tavily_url: str) -> MCPServerStreamableHttp:
-    return MCPServerStreamableHttp(
+def _build_tavily_mcp_server(tavily_url: str, conversation_id: str, turn: str) -> MCPServerStreamableHttp:
+    return TimedTavilyMCPServer(
         name="Tavily MCP Streamable HTTP Server",
         params={
             "url": tavily_url,
@@ -220,6 +309,8 @@ def _build_tavily_mcp_server(tavily_url: str) -> MCPServerStreamableHttp:
         max_retry_attempts=2,
         retry_backoff_seconds_base=2.0,
         client_session_timeout_seconds=15,
+        conversation_id=conversation_id,
+        turn=turn,
     )
 
 
@@ -286,6 +377,7 @@ def stream_agent_reply(
         total_chars = 0
         started_at = asyncio.get_running_loop().time()
         first_token_at: float | None = None
+        mcp_connect_seconds: float | None = None
 
         async def _stream_events(stream: Any) -> AsyncIterator[str]:
             nonlocal emitted_delta, chunk_count, total_chars, first_token_at
@@ -300,12 +392,13 @@ def stream_agent_reply(
                 if first_token_at is None:
                     first_token_at = asyncio.get_running_loop().time()
                     _log(
-                        logging.DEBUG,
+                        logging.INFO,
                         "chat",
                         "first_token",
                         cid=_conversation_label(conversation_id),
                         turn=turn,
                         t=first_token_at - started_at,
+                        mcp=use_tavily,
                     )
                 yield delta
 
@@ -331,11 +424,22 @@ def stream_agent_reply(
             tavily_url = _tavily_mcp_url()
             if not tavily_url:
                 raise AgentConfigError("Variaveis ausentes: TAVILY_MCP_URL")
-            mcp_server = _build_tavily_mcp_server(tavily_url)
-            _log(logging.INFO, "mcp", "tavily.enabled", cid=_conversation_label(conversation_id))
+            mcp_server = _build_tavily_mcp_server(tavily_url, conversation_id, turn)
+            _log(logging.INFO, "mcp", "tavily.enabled", cid=_conversation_label(conversation_id), turn=turn)
 
         if mcp_server is not None:
+            mcp_started_at = asyncio.get_running_loop().time()
+            _log(logging.INFO, "mcp", "tavily.connect_start", cid=_conversation_label(conversation_id), turn=turn)
             async with mcp_server:
+                mcp_connect_seconds = asyncio.get_running_loop().time() - mcp_started_at
+                _log(
+                    logging.INFO,
+                    "mcp",
+                    "tavily.connected",
+                    cid=_conversation_label(conversation_id),
+                    turn=turn,
+                    t=mcp_connect_seconds,
+                )
                 stream = Runner.run_streamed(
                     _assistant_agent_with_tavily(mcp_server),
                     input=user_prompt,
@@ -359,6 +463,8 @@ def stream_agent_reply(
             cid=_conversation_label(conversation_id),
             turn=turn,
             t=asyncio.get_running_loop().time() - started_at,
+            first=first_token_at - started_at if first_token_at is not None else "-",
+            mcp_connect=mcp_connect_seconds if mcp_connect_seconds is not None else "-",
             ch=chunk_count,
             chars=total_chars,
         )

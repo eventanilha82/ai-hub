@@ -96,7 +96,9 @@ class AppUnitTests(TestCase):
 
     def test_stream_response_renders_incremental_chunks(self) -> None:
         placeholder = SimpleNamespace(markdown=Mock())
-        loading_placeholder = SimpleNamespace(empty=Mock())
+        loading_placeholder = MagicMock()
+        loading_placeholder.__enter__.return_value = loading_placeholder
+        loading_placeholder.__exit__.return_value = False
 
         with patch.object(app, "stream_agent_reply", return_value=iter(["Ola", " mundo"])) as stream_reply:
             response = app._stream_response(
@@ -110,13 +112,16 @@ class AppUnitTests(TestCase):
             )
 
         self.assertEqual(response, "Ola mundo")
+        app.st.spinner.assert_called_once_with("Preparando resposta...")
         loading_placeholder.empty.assert_called_once()
         placeholder.markdown.assert_called()
         stream_reply.assert_called_once_with("oi", "conv-test", use_tavily=False, turn_id="turn-1")
 
     def test_stream_response_passes_tavily_toggle(self) -> None:
         placeholder = SimpleNamespace(markdown=Mock())
-        loading_placeholder = SimpleNamespace(empty=Mock())
+        loading_placeholder = MagicMock()
+        loading_placeholder.__enter__.return_value = loading_placeholder
+        loading_placeholder.__exit__.return_value = False
 
         with patch.object(app, "stream_agent_reply", return_value=iter(["Ola"])) as stream_reply:
             app._stream_response(
@@ -132,10 +137,18 @@ class AppUnitTests(TestCase):
         stream_reply.assert_called_once_with("oi", "conv-test", use_tavily=True, turn_id="turn-1")
 
     def test_handle_prompt_appends_messages_after_successful_response(self) -> None:
-        with patch.object(app, "_stream_response", return_value="Resposta final"):
+        with patch.object(app, "_stream_response", return_value="Resposta final") as stream_response:
             app._handle_prompt("oi")
 
-        app.st.spinner.assert_called_once_with("Preparando resposta...")
+        stream_response.assert_called_once_with(
+            "oi",
+            "conv-test",
+            stream_response.call_args.args[2],
+            self.response_placeholder,
+            self.loading_placeholder,
+            [],
+            False,
+        )
         self.assertEqual(
             self.session_state.messages,
             [

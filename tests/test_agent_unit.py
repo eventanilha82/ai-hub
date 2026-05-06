@@ -177,7 +177,7 @@ class AgentUnitTests(TestCase):
                 "TAVILY_SEARCH_URL": "https://www.petz.com.br/blog/",
             },
             clear=False,
-        ), patch.object(agent, "MCPServerStreamableHttp", return_value=fake_mcp) as mcp_server, patch.object(
+        ), patch.object(agent, "TimedTavilyMCPServer", return_value=fake_mcp) as mcp_server, patch.object(
             agent, "_get_runtime", return_value=runtime
         ), patch.object(
             agent.Runner, "run_streamed", return_value=fake_stream
@@ -194,6 +194,8 @@ class AgentUnitTests(TestCase):
         self.assertEqual(mcp_server.call_args.kwargs["retry_backoff_seconds_base"], 2.0)
         self.assertEqual(mcp_server.call_args.kwargs["client_session_timeout_seconds"], 15)
         self.assertTrue(mcp_server.call_args.kwargs["use_structured_content"])
+        self.assertEqual(mcp_server.call_args.kwargs["conversation_id"], "conv-1")
+        self.assertEqual(mcp_server.call_args.kwargs["turn"], "-")
         streamed_agent = run_streamed.call_args.args[0]
         self.assertEqual(streamed_agent.mcp_servers, [fake_mcp])
         self.assertEqual(streamed_agent.tools, [])

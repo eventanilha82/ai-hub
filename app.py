@@ -103,17 +103,25 @@ def _stream_response(
         conversation_id,
         len(prompt),
     )
-    waiting_first_chunk = True
-    for chunk in stream_agent_reply(prompt, conversation_id, use_tavily=use_tavily, turn_id=turn_id):
+    stream = iter(stream_agent_reply(prompt, conversation_id, use_tavily=use_tavily, turn_id=turn_id))
+    first_chunk = ""
+    with loading_placeholder:
+        with st.spinner("Preparando resposta..."):
+            for chunk in stream:
+                if chunk:
+                    first_chunk = chunk
+                    break
+
+    loading_placeholder.empty()
+    if first_chunk:
+        chunks.append(first_chunk)
+        placeholder.markdown("".join(chunks))
+
+    for chunk in stream:
         if not chunk:
             continue
-        if waiting_first_chunk:
-            loading_placeholder.empty()
-            waiting_first_chunk = False
         chunks.append(chunk)
         placeholder.markdown("".join(chunks))
-    if waiting_first_chunk:
-        loading_placeholder.empty()
     response = "".join(chunks)
     logger.info(
         "UI: renderizacao incremental concluida conversation_id=%s chunks=%s chars=%s",
@@ -217,17 +225,15 @@ def _handle_prompt(prompt: str) -> None:
         loading_placeholder = st.empty()
         placeholder = st.empty()
         try:
-            with loading_placeholder:
-                with st.spinner("Preparando resposta..."):
-                    response_text = _stream_response(
-                        prompt,
-                        conversation_id,
-                        turn_id,
-                        placeholder,
-                        loading_placeholder,
-                        response_chunks,
-                        use_tavily,
-                    )
+            response_text = _stream_response(
+                prompt,
+                conversation_id,
+                turn_id,
+                placeholder,
+                loading_placeholder,
+                response_chunks,
+                use_tavily,
+            )
         except AgentConfigError as error:
             logger.exception(
                 "UI: falha de configuracao/runtime conversation_id=%s tipo=%s parcial_len=%s detalhe=%s",
